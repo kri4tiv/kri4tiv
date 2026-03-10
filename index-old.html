@@ -2646,125 +2646,95 @@
         });
 
         /* ── WEB AUDIO EQUALISER ──────────────────────────────── */
-        const aud = document.getElementById("audio");
-        const albl = document.getElementById("albl");
-        const eqBars = [0, 1, 2, 3, 4].map((i) =>
-          document.getElementById("eb" + i),
-        );
-        const bands = [2, 5, 10, 18, 30];
-        let playing = false,
-          audioCtx = null,
-          analyser = null,
-          dataArr = null,
-          eqRaf = null;
+        const aud    = document.getElementById('audio');
+        const albl   = document.getElementById('albl');
+        const eqBars = [0,1,2,3,4].map(i => document.getElementById('eb' + i));
+        const bands  = [2, 5, 10, 18, 30];
+
+        let audioCtx = null, analyser = null, dataArr = null, eqRaf = null, isAudioOn = false;
 
         function initAudio() {
           if (audioCtx) return;
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          const src = audioCtx.createMediaElementSource(aud);
+          const sourceNode = audioCtx.createMediaElementSource(aud);
           analyser = audioCtx.createAnalyser();
           analyser.fftSize = 128;
           analyser.smoothingTimeConstant = 0.8;
-          src.connect(analyser);
+          sourceNode.connect(analyser);
           analyser.connect(audioCtx.destination);
           dataArr = new Uint8Array(analyser.frequencyBinCount);
         }
+
         function resetEQ() {
-          [4, 7, 5, 9, 3].forEach((h, i) => {
-            eqBars[i].style.height = h + "px";
-            eqBars[i].style.background = "var(--dim)";
+          [4,7,5,9,3].forEach((h,i) => {
+            eqBars[i].style.height = h + 'px';
+            eqBars[i].style.background = 'rgba(196,169,125,.35)';
           });
         }
+
         function stopEQ() {
-          playing = false;
           if (eqRaf) cancelAnimationFrame(eqRaf);
           eqRaf = null;
           resetEQ();
-          abtn.classList.remove("on-css", "is-playing");
-          albl.textContent = "Sound";
         }
+
+        function syncAudioUI() {
+          abtn.classList.toggle('is-playing', isAudioOn);
+          abtn.classList.toggle('on-css', isAudioOn);
+          albl.textContent = isAudioOn ? 'Playing' : 'Sound';
+        }
+
         function drawEQ() {
-          if (
-            !playing ||
-            !analyser ||
-            aud.paused ||
-            aud.muted ||
-            aud.volume === 0
-          ) {
-            stopEQ();
-            return;
-          }
+          if (!isAudioOn || !analyser || aud.paused) { stopEQ(); return; }
           analyser.getByteFrequencyData(dataArr);
           eqBars.forEach((bar, i) => {
             const v = dataArr[bands[i]] / 255;
-            bar.style.height = Math.max(3, Math.round(v * 13)) + "px";
-            bar.style.background =
-              v > 0.45 ? "#c4a97d" : v > 0.2 ? "#9a7f5a" : "#555";
+            bar.style.height = Math.max(3, Math.round(v * 13)) + 'px';
+            bar.style.background = v > .45 ? '#c4a97d' : v > .2 ? '#9a7f5a' : 'rgba(196,169,125,.35)';
           });
           eqRaf = requestAnimationFrame(drawEQ);
         }
 
-        abtn.addEventListener("click", async () => {
-          playClick("tick");
-          const hasSrc = aud.querySelector('source[src]:not([src=""])');
-          if (!hasSrc) {
-            albl.textContent = "No audio";
-            // Subtle shake
-            gsap.to(abtn, {
-              keyframes: [{ x: -3 }, { x: 3 }, { x: -2 }, { x: 2 }, { x: 0 }],
-              duration: 0.3,
-              ease: "none",
-            });
-            setTimeout(() => (albl.textContent = "Sound"), 2000);
+        async function turnAudioOn() {
+          if (!aud.getAttribute('src') && !aud.currentSrc) {
+            albl.textContent = 'No audio';
+            gsap.to(abtn, { keyframes:[{x:-3},{x:3},{x:-2},{x:2},{x:0}], duration:.3, ease:'none' });
+            setTimeout(() => { if (!isAudioOn) albl.textContent = 'Sound'; }, 1800);
             return;
           }
-          if (aud.paused) {
-            try {
-              initAudio();
-              if (audioCtx.state === "suspended") await audioCtx.resume();
-              await aud.play();
-              playing = true;
-              albl.textContent = "Playing";
-              abtn.classList.add("is-playing");
-              gsap.fromTo(
-                abtn,
-                { scale: 0.95 },
-                { scale: 1, duration: 0.35, ease: "back.out(2)" },
-              );
-              drawEQ();
-            } catch (e) {
-              albl.textContent = "Blocked";
-              setTimeout(() => (albl.textContent = "Sound"), 2000);
-            }
-          } else {
-            aud.pause();
-            stopEQ();
-            gsap.fromTo(
-              abtn,
-              { scale: 0.96 },
-              { scale: 1, duration: 0.3, ease: "power2.out" },
-            );
-          }
-        });
-        aud.addEventListener("play", () => {
-          if (isAudioOn) {
-            syncAudioUI();
-            if (!eqRaf) drawEQ();
-          }
-        });
-
-        aud.addEventListener("pause", () => {
-          if (!isAudioOn) {
+          try {
+            initAudio();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            aud.volume = 0.4;
+            aud.muted = false;
+            await aud.play();
+            isAudioOn = true;
             syncAudioUI();
             stopEQ();
+            drawEQ();
+          } catch(err) {
+            isAudioOn = false;
+            syncAudioUI();
+            albl.textContent = 'Blocked';
+            setTimeout(() => { if (!isAudioOn) albl.textContent = 'Sound'; }, 1800);
           }
-        });
+        }
 
-        aud.addEventListener("ended", () => {
+        function turnAudioOff() {
+          aud.pause();
           isAudioOn = false;
           syncAudioUI();
           stopEQ();
+        }
+
+        abtn.addEventListener('click', async () => {
+          playClick('tick');
+          if (isAudioOn) { turnAudioOff(); } else { await turnAudioOn(); }
         });
+
+        aud.addEventListener('play',  () => { if (isAudioOn) { syncAudioUI(); if (!eqRaf) drawEQ(); } });
+        aud.addEventListener('pause', () => { if (!isAudioOn) { syncAudioUI(); stopEQ(); } });
+        aud.addEventListener('ended', () => { isAudioOn = false; syncAudioUI(); stopEQ(); });
 
       } // end initSite
     </script>
